@@ -1,0 +1,38 @@
+﻿@page "/order-success/{name}"
+@rendermode InteractiveServer
+@using System.Net.Http.Json
+@inject NavigationManager Navigation
+
+<PageTitle>Gracias por su compra</PageTitle>
+
+@functions {
+    [Parameter] public string name { get; set; } = String.Empty;
+}
+
+<header class="header">
+    <nav class="menu-bar">
+    </nav>
+</header>
+
+<div class="thanks-message">
+    <a href="/"><img src="images/logo.webp" alt="El Barato" class="logo"></a>
+    <h1>¡Gracias por su compra, @name!</h1>
+    <a href="/">Volver</a>
+</div>
+
+<style>
+    .thanks-message {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        height: 80vh;
+        font-size: 2em;
+        color: #004a7c;
+    }
+
+    img {
+        width: 150px;
+        height: 120px;
+    }
+</style>

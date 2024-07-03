@@ -1,0 +1,215 @@
+﻿@page "/products/{CategoryId:int?}"
+@rendermode InteractiveServer
+@using System.Net.Http.Json
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Productos</PageTitle>
+
+@functions {
+    [Parameter] public int? CategoryId { get; set; }
+    private List<Product> products = new List<Product>();
+    private List<Category> categories = new List<Category>();
+    private List<CartItem> cartItems = new List<CartItem>();
+    private int currentPage = 1;
+    private int totalRecords = 0;
+    private int totalPages = 0;
+    private string cartId = null!;
+    private string errorMessage = string.Empty;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadProducts();
+        await LoadCategories();
+    }
+
+    private async Task LoadProducts()
+    {
+        try
+        {
+            HttpResponseMessage response;
+            string url;
+
+            if (CategoryId.HasValue)
+            {
+                url = $"https://localhost:5201/products/bycategory/{CategoryId}?pagina={currentPage}&recordsPorPagina=9";
+            }
+            else
+            {
+                url = $"https://localhost:5201/products?pagina={currentPage}&recordsPorPagina=6";
+            }
+
+            response = await Http.GetAsync(url);
+
+            if (response.IsSuccessStatusCode)
+            {
+                totalRecords = int.Parse(response.Headers.GetValues("cantidadtotalregistros").FirstOrDefault() ?? "0");
+                totalPages = (int)Math.Ceiling((double)totalRecords / (CategoryId.HasValue ? 9 : 6));
+                products = await response.Content.ReadFromJsonAsync<List<Product>>();
+            }
+
+            if (products == null || products.Count == 0)
+            {
+                errorMessage = "No se encontraron productos. Puede utilizar el método de la API /generatedata para generarlos y probar fácilmente.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Ocurrió un error al cargar los productos. Por favor, inténtelo de nuevo más tarde.";
+            Console.Error.WriteLine(ex);
+        }
+    }
+
+    private async Task LoadCategories()
+    {
+        categories = await Http.GetFromJsonAsync<List<Category>>("https://localhost:5201/categories");
+    }
+
+    private void AddToCart(Product product)
+    {
+        if (string.IsNullOrEmpty(cartId))
+        {
+            cartId = Guid.NewGuid().ToString();
+        }
+
+        var existingCartItem = cartItems.FirstOrDefault(c => c.ProductId == product.ProductId);
+        if (existingCartItem != null)
+        {
+            existingCartItem.Count++;
+        }
+        else
+        {
+            var newCartItem = new CartItem
+                {
+                    CartId = cartId,
+                    ProductId = product.ProductId,
+                    Count = 1,
+                    DateCreated = DateTime.Now,
+                    Product = product
+                };
+            cartItems.Add(newCartItem);
+        }
+    }
+
+    private void RemoveFromCart(int productId)
+    {
+        var cartItem = cartItems.FirstOrDefault(c => c.ProductId == productId);
+        if (cartItem != null)
+        {
+            cartItems.Remove(cartItem);
+        }
+    }
+
+    private void ChangePage(int pageNumber)
+    {
+        currentPage = pageNumber;
+        LoadProducts();
+    }
+
+    private async Task ToggleCart()
+    {
+        await JSRuntime.InvokeVoidAsync("toggleElement", "cart-sidebar");
+    }
+
+    private async Task ToggleCategories()
+    {
+        await JSRuntime.InvokeVoidAsync("toggleElement", "categories-dropdown");
+    }
+
+    private async Task CloseCart()
+    {
+        await JSRuntime.InvokeVoidAsync("toggleElement", "cart-sidebar");
+    }
+
+    private async Task CheckoutButton()
+    {
+        await Http.PostAsJsonAsync("https://localhost:5201/carts/multiple", cartItems);
+        Navigation.NavigateTo($"/checkout/{cartId}");
+    }
+
+    private string GetMenuClass(int? categoryId)
+    {
+        if (!CategoryId.HasValue && !categoryId.HasValue)
+            return "selected";
+        if (CategoryId.HasValue && CategoryId.Value == categoryId)
+            return "selected";
+        return "";
+    }
+
+    private int GetTotalProductsInCart()
+    {
+        return cartItems.Sum(item => item.Count);
+    }
+}
+
+<header class="header">
+    <div class="top-bar">
+        <img src="images/logo.webp" alt="El Barato" class="logo">
+        <div class="cart-container" @onclick="ToggleCart">
+            <div class="cart-icon">
+                🛒
+            </div>
+            <div class="cart-count">
+                @GetTotalProductsInCart() productos
+            </div>
+        </div>
+        
+    </div>
+    <nav class="menu-bar">
+        <a href="/products" class="menu-button @GetMenuClass(null)">Todos los Productos</a>
+        <div class="menu">
+            <button class="menu-button @GetMenuClass(CategoryId)" @onclick="ToggleCategories">Categorías ▼</button>
+            <div id="categories-dropdown" class="dropdown-content">
+                @foreach (var category in categories)
+                {
+                    <a href="/products/@category.CategoryId" class="@GetMenuClass(category.CategoryId)">@category.Name</a>
+                }
+            </div>
+        </div>
+    </nav>
+</header>
+
+<div id="cart-sidebar" class="cart-sidebar">
+    <h2>
+        Carrito
+        <button class="close-btn" @onclick="CloseCart">X</button>
+    </h2>
+    <ul>
+        @foreach (var item in cartItems)
+        {
+            <li>@item.Product.Title - @item.Count - @item.Product.Price €
+                <button @onclick="() => RemoveFromCart(item.ProductId)" class="remove-btn">X</button>
+            </li>
+        }
+    </ul>
+    <button @onclick="CheckoutButton" class="checkout-btn">Finalizar Pedido</button>
+</div>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else
+{
+    <div class="products-grid">
+        @foreach (var product in products)
+        {
+            <div class="product-card">
+                @* "<img src="@product.ProductArtUrl" alt="@product.Title" class="product-image" /> *@
+                <img src="https://picsum.photos/200/300?random=@product.ProductId" alt="@product.Title" class="product-image" />
+                <h3>@product.Title</h3>
+                <p>@product.Price €</p>
+                <p>@product.Description</p>
+                <p>Fecha: @product.Created.ToShortDateString()</p>
+                <button class="add-to-cart-btn" @onclick="() => AddToCart(product)">Añadir al carrito</button>
+            </div>
+        }
+    </div>
+}
+
+<div class="pagination">
+    <button @onclick="() => ChangePage(currentPage - 1)" disabled="@(currentPage == 1)">Anterior</button>
+    <span>Página @currentPage de @totalPages</span>
+    <button @onclick="() => ChangePage(currentPage + 1)" disabled="@(currentPage >= totalPages)">Siguiente</button>
+</div>

@@ -1,0 +1,169 @@
+﻿@page "/checkout/{cartId}"
+@rendermode InteractiveServer
+@using System.Net.Http.Json
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Finalizar Pedido</PageTitle>
+
+@functions {
+    [Parameter] public string? cartId { get; set; }
+    private List<CartItemWithPriceDTO> cartItems = new List<CartItemWithPriceDTO>();
+    private Order order = new Order();
+    private string errorMessage = string.Empty;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadCartItems();
+    }
+
+    private async Task LoadCartItems()
+    {
+        try
+        {
+            cartItems = await Http.GetFromJsonAsync<List<CartItemWithPriceDTO>>($"https://localhost:5201/carts/mycart/{cartId}");
+            if (cartItems == null || cartItems.Count == 0)
+            {
+                errorMessage = "No se encontraron elementos en el carrito.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Ocurrió un error al cargar el carrito. Por favor, inténtalo de nuevo más tarde.";
+            Console.Error.WriteLine(ex);
+        }
+    }
+
+    private async Task SubmitOrder()
+    {
+        order.Total = cartItems.Sum(item => item.Quantity * item.UnitPrice);
+
+        var response = await Http.PostAsJsonAsync("https://localhost:5201/orders", order);
+        if (response.IsSuccessStatusCode)
+        {
+            var createdOrder = await response.Content.ReadFromJsonAsync<Order>();
+            if (createdOrder != null)
+            {
+                var orderDetails = cartItems.Select(item => new OrderDetail
+                    {
+                        Count = item.Quantity,
+                        UnitPrice = item.UnitPrice,
+                        ProductId = item.ProductId
+                    }).ToList();
+
+                var orderDetailsResponse = await Http.PostAsJsonAsync($"https://localhost:5201/orders/orderdetails/{createdOrder.OrderId}", orderDetails);
+                if (orderDetailsResponse.IsSuccessStatusCode)
+                {
+                    Navigation.NavigateTo($"/order-success/{createdOrder.Name}");
+                }
+                else
+                {
+                    Console.Error.WriteLine("Error al enviar los detalles del pedido");
+                }
+            }
+        }
+        else
+        {
+            Console.Error.WriteLine("Error al enviar el pedido");
+        }
+    }
+
+    private void FillWithTestData()
+    {
+        order = new Order
+            {
+                Username = "userblanco",
+                Name = "Antonio blanco",
+                Address = "Calle Falsa 123",
+                City = "Málaga",
+                State = "IL",
+                PostalCode = "29100",
+                Country = "España",
+                Phone = "666999666",
+                Email = "correo@localhost.com"
+            };
+    }
+}
+
+<header class="header">
+    <div class="top-bar">
+        <img src="images/logo.webp" alt="El Barato" class="logo">
+    </div>
+    <nav class="menu-bar">
+        <!-- Menú vacío por ahora -->
+    </nav>
+</header>
+
+<h3>Finalizar Pedido</h3>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else
+{
+    <ul class="cart-items-list">
+        @foreach (var item in cartItems)
+        {
+            <li class="cart-item">
+                <span class="cart-item-title">@item.ProductTitle</span>
+                <span class="cart-item-quantity">@item.Quantity</span>
+                <span class="cart-item-price">@item.UnitPrice €</span>
+            </li>
+        }
+    </ul>
+    <h4 class="cart-total">Total: @cartItems.Sum(item => item.Quantity * item.UnitPrice) €</h4>
+
+
+    @if (System.Diagnostics.Debugger.IsAttached)
+    {
+        <button type="button" class="btn btn-secondary" @onclick="FillWithTestData">Rellenar con datos de prueba (solo en Debug)</button>
+    }
+
+
+    <h4>Detalles del Pedido</h4>
+    <EditForm Model="@order" OnValidSubmit="SubmitOrder" FormName="orderForm">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <div class="form-group">
+            <label for="UserName">Usuario que deseas</label>
+            <InputText id="UserName" @bind-Value="order.Username" class="form-control" />
+        </div>
+        <div class="form-group">
+            <label for="Name">Nombre</label>
+            <InputText id="Name" @bind-Value="order.Name" class="form-control" />
+        </div>
+        <div class="form-group">
+            <label for="Address">Dirección</label>
+            <InputText id="Address" @bind-Value="order.Address" class="form-control" />
+        </div>
+        <div class="form-group">
+            <label for="City">Ciudad</label>
+            <InputText id="City" @bind-Value="order.City" class="form-control" />
+        </div>
+        <div class="form-group">
+            <label for="State">Estado/Provincia</label>
+            <InputText id="State" @bind-Value="order.State" class="form-control" />
+        </div>
+        <div class="form-group">
+            <label for="PostalCode">Código Postal</label>
+            <InputText id="PostalCode" @bind-Value="order.PostalCode" class="form-control" />
+        </div>
+        <div class="form-group">
+            <label for="Country">País</label>
+            <InputText id="Country" @bind-Value="order.Country" class="form-control" />
+        </div>
+        <div class="form-group">
+            <label for="Phone">Teléfono</label>
+            <InputText id="Phone" @bind-Value="order.Phone" class="form-control" />
+        </div>
+        <div class="form-group">
+            <label for="Email">Email</label>
+            <InputText id="Email" @bind-Value="order.Email" class="form-control" />
+        </div>
+
+        <button type="submit" class="btn btn-primary">Comprar</button>
+    </EditForm>
+}

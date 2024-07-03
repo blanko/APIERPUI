@@ -1,0 +1,15 @@
+﻿@page "/"
+@inject NavigationManager NavManager
+
+@code {
+    // protected override void OnInitialized()
+    // {
+    //     NavManager.NavigateTo("/products");
+    // }
+    
+    protected override async Task OnInitializedAsync()
+    {
+        NavManager.NavigateTo("/products", true);
+        await base.OnInitializedAsync();
+    }
+}
